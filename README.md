@@ -49,6 +49,8 @@ customer's balance is converted the first time it changes.
   with a new ledger entry whose amount matches the change, so the balance
   always adds up, and each entry records which staff member made it.
 - Balances can't go below zero; ledger entries can't be edited or deleted.
+- **Undo** appends a reversing entry with id `undo-<original id>` and the exact
+  opposite amount, so each entry can be undone once and an undo can't be undone.
 - First-time setup (the first admin) can only happen once.
 
 ## Getting started

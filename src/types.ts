@@ -33,4 +33,6 @@ export interface CreditTransaction {
   /** uid of the staff member who recorded it. */
   createdBy: string;
   createdAt: Timestamp | null;
+  /** Set on an undo entry: the id of the entry it reverses. */
+  reversesTxId?: string;
 }

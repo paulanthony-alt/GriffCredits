@@ -204,6 +204,54 @@ export async function adjustCredits(customerId: string, amountCents: number, not
   });
 }
 
+/** Undo entries get this fixed id, so each entry can only be undone once. */
+export function undoTxId(txId: string): string {
+  return `undo-${txId}`;
+}
+
+/**
+ * Reverses a load or spend by appending an entry with the opposite amount.
+ * Nothing is edited or deleted, so the history still shows what happened.
+ */
+export async function undoTransaction(customerId: string, txId: string): Promise<void> {
+  const staffUid = auth.currentUser?.uid;
+  if (!staffUid) throw new Error("Not signed in.");
+
+  const customerRef = doc(db, "customers", customerId);
+  const originalRef = doc(customerRef, "transactions", txId);
+  const undoRef = doc(customerRef, "transactions", undoTxId(txId));
+
+  await runTransaction(db, async (tx) => {
+    const [customerSnap, originalSnap, undoSnap] = await Promise.all([
+      tx.get(customerRef),
+      tx.get(originalRef),
+      tx.get(undoRef),
+    ]);
+    if (!customerSnap.exists() || !originalSnap.exists()) throw new Error("That entry no longer exists.");
+    const original = toTransaction(originalSnap.id, originalSnap.data());
+    if (original.reversesTxId) throw new Error("An undo can't be undone. Record a new load or spend instead.");
+    if (undoSnap.exists()) throw new Error("That entry has already been undone.");
+
+    const balanceCents = toCustomer(customerSnap.id, customerSnap.data()).balanceCents;
+    const newBalanceCents = balanceCents - original.amountCents;
+    if (newBalanceCents < 0) {
+      throw new Error(
+        `Can't undo: it would take the balance below zero (balance ${formatCredits(balanceCents)}).`,
+      );
+    }
+    const label = original.note || (original.amountCents > 0 ? "credits loaded" : "credits spent");
+    tx.set(undoRef, {
+      amountCents: -original.amountCents,
+      balanceAfterCents: newBalanceCents,
+      note: `Undo: ${label}`.slice(0, 200),
+      createdBy: staffUid,
+      createdAt: serverTimestamp(),
+      reversesTxId: txId,
+    });
+    tx.update(customerRef, { balanceCents: newBalanceCents, balance: deleteField(), lastTxId: undoRef.id });
+  });
+}
+
 // ---------- helpers ----------
 
 // Records written before amounts had cents store whole credits in `balance`,

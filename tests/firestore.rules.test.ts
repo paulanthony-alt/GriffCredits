@@ -210,6 +210,118 @@ describe("staff", () => {
   });
 });
 
+/** Mirrors undoTransaction() in src/services.ts; overrides let tests try to cheat. */
+async function undo(
+  fs: Firestore,
+  customerId: string,
+  txId: string,
+  by: string,
+  overrides: { amountCents?: number; undoId?: string; reversesTxId?: string } = {},
+) {
+  const customerRef = doc(fs, "customers", customerId);
+  const undoRef = doc(customerRef, "transactions", overrides.undoId ?? `undo-${txId}`);
+  return runTransaction(fs, async (tx) => {
+    const customer = (await tx.get(customerRef)).data()!;
+    const original = (await tx.get(doc(customerRef, "transactions", txId))).data();
+    const originalCents = original ? (original.amountCents ?? original.amount * 100) : 0;
+    const amountCents = overrides.amountCents ?? -originalCents;
+    const balanceCents = (customer.balanceCents ?? customer.balance * 100) + amountCents;
+    tx.set(undoRef, {
+      amountCents,
+      balanceAfterCents: balanceCents,
+      note: "Undo",
+      createdBy: by,
+      createdAt: serverTimestamp(),
+      reversesTxId: overrides.reversesTxId ?? txId,
+    });
+    tx.update(customerRef, { balanceCents, balance: deleteField(), lastTxId: undoRef.id });
+  });
+}
+
+async function lastTxIdOf(customerId: string) {
+  let id = "";
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    id = (await getDoc(doc(ctx.firestore(), "customers", customerId))).data()!.lastTxId;
+  });
+  return id;
+}
+
+async function balanceOf(customerId: string) {
+  let cents = 0;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    cents = (await getDoc(doc(ctx.firestore(), "customers", customerId))).data()!.balanceCents;
+  });
+  return cents;
+}
+
+describe("undo", () => {
+  beforeEach(seed);
+
+  it("reverses a spend exactly, once", async () => {
+    await assertSucceeds(adjust(db("sam"), "alice", -565, "sam")); // 10.00 -> 4.35
+    const spend = await lastTxIdOf("alice");
+    await assertSucceeds(undo(db("sam"), "alice", spend, "sam"));
+    expect(await balanceOf("alice")).toBe(1000);
+    // A second undo of the same entry hits the existing undo doc.
+    await assertFails(undo(db("sam"), "alice", spend, "sam"));
+  });
+
+  it("cannot undo an undo", async () => {
+    await assertSucceeds(adjust(db("sam"), "alice", 500, "sam"));
+    const load = await lastTxIdOf("alice");
+    await assertSucceeds(undo(db("sam"), "alice", load, "sam"));
+    await assertFails(undo(db("sam"), "alice", `undo-${load}`, "sam"));
+  });
+
+  it("must reverse the exact amount, under the fixed undo id", async () => {
+    await assertSucceeds(adjust(db("sam"), "alice", -500, "sam"));
+    const spend = await lastTxIdOf("alice");
+    await assertFails(undo(db("sam"), "alice", spend, "sam", { amountCents: 5000 }));
+    await assertFails(undo(db("sam"), "alice", spend, "sam", { undoId: "some-other-id" }));
+    await assertFails(undo(db("sam"), "alice", spend, "sam", { reversesTxId: "does-not-exist" }));
+  });
+
+  it("cannot reverse something that never happened", async () => {
+    await assertFails(undo(db("sam"), "alice", "made-up", "sam", { amountCents: 5000 }));
+  });
+
+  it("stops a normal entry from squatting on an undo id", async () => {
+    const fs = db("sam");
+    const customerRef = doc(fs, "customers", "bob");
+    const fakeRef = doc(customerRef, "transactions", "undo-something");
+    await assertFails(
+      runTransaction(fs, async (tx) => {
+        tx.set(fakeRef, { amountCents: 100, balanceAfterCents: 600, note: "", createdBy: "sam", createdAt: serverTimestamp() });
+        tx.update(customerRef, { balanceCents: 600, lastTxId: fakeRef.id });
+      }),
+    );
+  });
+
+  it("cannot undo if the balance would go below zero", async () => {
+    await assertSucceeds(adjust(db("sam"), "bob", 1000, "sam")); // 5.00 -> 15.00
+    const load = await lastTxIdOf("bob");
+    await assertSucceeds(adjust(db("sam"), "bob", -1200, "sam")); // -> 3.00
+    await assertFails(undo(db("sam"), "bob", load, "sam")); // would be -7.00
+  });
+
+  it("can undo an entry recorded before cents (whole credits)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const fs = ctx.firestore();
+      await setDoc(doc(fs, "customers/lenny/transactions/old"), {
+        amount: -5, balanceAfter: 20, note: "", createdBy: "admin", createdAt: serverTimestamp(),
+      });
+    });
+    await assertSucceeds(undo(db("sam"), "lenny", "old", "sam"));
+    expect(await balanceOf("lenny")).toBe(2500);
+  });
+
+  it("is staff-only", async () => {
+    await assertSucceeds(adjust(db("sam"), "alice", -100, "sam"));
+    const spend = await lastTxIdOf("alice");
+    await assertFails(undo(db("stranger"), "alice", spend, "stranger"));
+  });
+});
+
 describe("admins", () => {
   beforeEach(seed);
 
