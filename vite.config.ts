@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     testTimeout: 20000,
+    // Test files share one Firestore emulator, so run them one at a time.
+    fileParallelism: false,
   },
 });

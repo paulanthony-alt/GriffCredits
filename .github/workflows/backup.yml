@@ -1,0 +1,76 @@
+name: Daily backup
+
+# Every day, copies the whole database into an encrypted file kept for 90 days.
+# The file is encrypted with the BACKUP_PASSWORD secret because artifacts on a
+# public repository can be downloaded by anyone. Restore with the
+# "Restore from backup" workflow. See SETUP.md, "Backups".
+on:
+  schedule:
+    - cron: "17 7 * * *" # 07:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: database
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check setup
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: scripts/ci/prepare.sh --need-backup-password
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Back up and encrypt
+        env:
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: |
+          stamp=$(date -u +%Y-%m-%d-%H%M)
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          scripts/ci/backup-encrypted.sh "griff-credits-backup-$stamp.json.enc"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: griff-credits-backup-${{ env.STAMP }}
+          path: griff-credits-backup-${{ env.STAMP }}.json.enc
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### ✅ Backup saved ($STAMP UTC)"
+            echo "To restore it: **Actions → Restore from backup → Run workflow**, and enter this run's ID: \`${{ github.run_id }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Close any open backup-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/ci/issue.sh resolve "Daily backup failed" "Backups are working again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/body.md" <<BODY
+          @${{ github.repository_owner }} today's backup didn't complete, so no new backup was saved.
+
+          Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Earlier backups are still available. This issue closes itself when a backup succeeds again.
+          BODY
+          scripts/ci/issue.sh open "Daily backup failed" "$RUNNER_TEMP/body.md"

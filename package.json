@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "emulators": "firebase emulators:start --project demo-griff-credits",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\"",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts",
+    "check:data": "tsx scripts/check.ts"
   },
   "dependencies": {
     "firebase": "^12.3.0",
@@ -18,12 +21,18 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "firebase-admin": "^13.10.0",
     "firebase-tools": "^14.0.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.0",
     "vite": "^7.1.0",
     "vitest": "^3.2.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.5"
   }
 }

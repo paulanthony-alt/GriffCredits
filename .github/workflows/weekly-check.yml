@@ -1,0 +1,93 @@
+name: Weekly check
+
+# Once a week: runs the full test suite, looks for known security problems in
+# the app's libraries, checks the live site is up, and checks every customer's
+# balance against their history. If anything fails it opens a GitHub issue
+# (which emails the repository owner); the issue closes itself once a later
+# check passes. Reports list record IDs only, never names or balances.
+on:
+  schedule:
+    - cron: "47 7 * * 1" # Mondays 07:47 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+
+      - name: Tests and build
+        id: tests
+        continue-on-error: true
+        run: npm run build && npm run test:rules
+
+      - name: Security check of the app's libraries
+        id: audit
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Live data health
+        id: data
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          scripts/ci/prepare.sh
+          npx tsx scripts/check.ts "$RUNNER_TEMP/data.md"
+
+      - name: Live site is up
+        id: site
+        continue-on-error: true
+        run: |
+          project_id=$(grep -E '^VITE_FIREBASE_PROJECT_ID=' .env.production | cut -d= -f2- | tr -d '"'"'"' \r')
+          curl -fsS --retry 3 --retry-delay 10 "https://$project_id.web.app/" | grep -q "<title>Griff Credits</title>"
+
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTS: ${{ steps.tests.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+          DATA: ${{ steps.data.outcome }}
+          SITE: ${{ steps.site.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mark() { [ "$1" = "success" ] && echo "✅" || echo "❌"; }
+          report="$RUNNER_TEMP/report.md"
+          {
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Tests and build | $(mark "$TESTS") |"
+            echo "| Security check of the app's libraries | $(mark "$AUDIT") |"
+            echo "| Live data health | $(mark "$DATA") |"
+            echo "| Live site is up | $(mark "$SITE") |"
+            echo
+            [ -f "$RUNNER_TEMP/data.md" ] && cat "$RUNNER_TEMP/data.md"
+          } > "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$TESTS$AUDIT$DATA$SITE" = "successsuccesssuccesssuccess" ]; then
+            scripts/ci/issue.sh resolve "Weekly check found problems" "All checks pass again: $RUN_URL"
+            exit 0
+          fi
+          {
+            echo "@${{ github.repository_owner }} this week's automatic check found something that needs a look."
+            echo
+            cat "$report"
+            echo
+            echo "Full details: $RUN_URL"
+          } > "$RUNNER_TEMP/body.md"
+          scripts/ci/issue.sh open "Weekly check found problems" "$RUNNER_TEMP/body.md"
+          exit 1
