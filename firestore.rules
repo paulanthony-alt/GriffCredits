@@ -1,0 +1,117 @@
+rules_version = '2';
+
+// Data model
+//   meta/setup                       -> exists once the first admin has been created
+//   users/{uid}                      -> { username, name, role, balance, lastTxId, createdAt }
+//   users/{uid}/transactions/{txId}  -> { amount, balanceAfter, note, createdBy, createdAt }
+//
+// Balances can only change together with a new transaction document, written in
+// the same batch/transaction, so the ledger always explains the balance.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function txPath(uid, txId) {
+      return /databases/$(database)/documents/users/$(uid)/transactions/$(txId);
+    }
+
+    function setupPath() {
+      return /databases/$(database)/documents/meta/setup;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.role == 'admin';
+    }
+
+    function validName(name) {
+      return name is string && name.size() > 0 && name.size() <= 64;
+    }
+
+    function validNewUser() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['username', 'name', 'role', 'balance', 'lastTxId', 'createdAt'])
+        && d.keys().hasAll(['username', 'name', 'role', 'balance', 'lastTxId', 'createdAt'])
+        && d.username is string
+        && d.username.matches('^[a-z0-9_.-]{2,32}$')
+        && validName(d.name)
+        && d.role in ['member', 'admin']
+        && d.balance == 0
+        && d.lastTxId == null
+        && d.createdAt == request.time;
+    }
+
+    match /meta/setup {
+      // The login screen needs to know whether to show first-time setup.
+      allow read: if true;
+      // Only creatable once, together with the first admin's user document.
+      allow create: if signedIn()
+        && !exists(setupPath())
+        && request.resource.data.keys().hasOnly(['adminUid', 'createdAt'])
+        && request.resource.data.adminUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(userPath(request.auth.uid)).data.role == 'admin';
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if validNewUser() && (
+        isAdmin()
+        // First-time setup: the very first user makes themselves admin.
+        || (signedIn()
+            && request.auth.uid == uid
+            && request.resource.data.role == 'admin'
+            && !exists(setupPath())
+            && existsAfter(setupPath()))
+      );
+
+      allow update: if isAdmin() && (
+        // Profile edits: name / role only.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role'])
+          && validName(request.resource.data.name)
+          && request.resource.data.role in ['member', 'admin'])
+        ||
+        // Balance changes must come with a brand-new transaction document.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'lastTxId'])
+          && request.resource.data.balance is int
+          && request.resource.data.balance >= 0
+          && request.resource.data.lastTxId is string
+          && !exists(txPath(uid, request.resource.data.lastTxId))
+          && existsAfter(txPath(uid, request.resource.data.lastTxId)))
+      );
+
+      allow delete: if false;
+
+      match /transactions/{txId} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.keys().hasAll(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.amount is int
+          && request.resource.data.amount != 0
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 200
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && getAfter(userPath(uid)).data.lastTxId == txId
+          && getAfter(userPath(uid)).data.balance
+               == get(userPath(uid)).data.balance + request.resource.data.amount
+          && request.resource.data.balanceAfter == getAfter(userPath(uid)).data.balance;
+
+        // The ledger is append-only.
+        allow update, delete: if false;
+      }
+    }
+  }
+}
