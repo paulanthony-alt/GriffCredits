@@ -17,7 +17,8 @@ export interface Customer {
   name: string;
   /** Anything that helps staff tell customers apart, e.g. "darts team". */
   notes: string;
-  balance: number;
+  /** Balance in cents: 1565 = 15.65 credits. */
+  balanceCents: number;
   lastTxId: string | null;
   createdBy: string;
   createdAt: Timestamp | null;
@@ -25,9 +26,9 @@ export interface Customer {
 
 export interface CreditTransaction {
   id: string;
-  /** Positive = credits loaded, negative = credits spent. */
-  amount: number;
-  balanceAfter: number;
+  /** In cents. Positive = credits loaded, negative = credits spent. */
+  amountCents: number;
+  balanceAfterCents: number;
   note: string;
   /** uid of the staff member who recorded it. */
   createdBy: string;

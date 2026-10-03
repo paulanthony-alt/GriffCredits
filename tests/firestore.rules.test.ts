@@ -7,6 +7,7 @@ import {
 import { readFileSync } from "node:fs";
 import {
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   runTransaction,
@@ -16,7 +17,7 @@ import {
   writeBatch,
   type Firestore,
 } from "firebase/firestore";
-import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 let env: RulesTestEnvironment;
 
@@ -44,7 +45,7 @@ const newStaff = (username: string, role: "admin" | "staff") => ({
 const newCustomer = (name: string, by: string) => ({
   name,
   notes: "",
-  balance: 0,
+  balanceCents: 0,
   lastTxId: null,
   createdBy: by,
   createdAt: serverTimestamp(),
@@ -56,26 +57,42 @@ async function seed() {
     await setDoc(doc(fs, "meta/setup"), { adminUid: "admin" });
     await setDoc(doc(fs, "staff/admin"), newStaff("admin", "admin"));
     await setDoc(doc(fs, "staff/sam"), newStaff("sam", "staff"));
-    await setDoc(doc(fs, "customers/alice"), { ...newCustomer("Alice", "admin"), balance: 10 });
-    await setDoc(doc(fs, "customers/bob"), { ...newCustomer("Bob", "admin"), balance: 5 });
+    await setDoc(doc(fs, "customers/alice"), { ...newCustomer("Alice", "admin"), balanceCents: 1000 });
+    await setDoc(doc(fs, "customers/bob"), { ...newCustomer("Bob", "admin"), balanceCents: 500 });
+    // Written before amounts had cents: whole credits in `balance`.
+    const { balanceCents: _, ...legacy } = newCustomer("Lenny", "admin");
+    await setDoc(doc(fs, "customers/lenny"), { ...legacy, balance: 20 });
   });
 }
 
-/** Mirrors adjustCredits() in src/services.ts. */
-function adjust(fs: Firestore, id: string, amount: number, by: string, overrides: Record<string, unknown> = {}) {
+/** Mirrors adjustCredits() in src/services.ts. Amounts are in cents. */
+function adjust(
+  fs: Firestore,
+  id: string,
+  amountCents: number,
+  by: string,
+  overrides: Record<string, unknown> = {},
+  customerUpdate: Record<string, unknown> = {},
+) {
   const customerRef = doc(fs, "customers", id);
   const txRef = doc(fs, "customers", id, "transactions", `tx-${Math.random().toString(36).slice(2)}`);
   return runTransaction(fs, async (tx) => {
-    const balance = (await tx.get(customerRef)).data()!.balance as number;
+    const data = (await tx.get(customerRef)).data()!;
+    const balanceCents = (data.balanceCents ?? data.balance * 100) as number;
     tx.set(txRef, {
-      amount,
-      balanceAfter: balance + amount,
+      amountCents,
+      balanceAfterCents: balanceCents + amountCents,
       note: "",
       createdBy: by,
       createdAt: serverTimestamp(),
       ...overrides,
     });
-    tx.update(customerRef, { balance: balance + amount, lastTxId: txRef.id });
+    tx.update(customerRef, {
+      balanceCents: balanceCents + amountCents,
+      balance: deleteField(),
+      lastTxId: txRef.id,
+      ...customerUpdate,
+    });
   });
 }
 
@@ -131,36 +148,58 @@ describe("staff", () => {
   it("can read customers and add new ones with a zero balance", async () => {
     await assertSucceeds(getDoc(doc(db("sam"), "customers/alice")));
     await assertSucceeds(setDoc(doc(db("sam"), "customers/carol"), newCustomer("Carol", "sam")));
-    await assertFails(setDoc(doc(db("sam"), "customers/dave"), { ...newCustomer("Dave", "sam"), balance: 50 }));
+    await assertFails(setDoc(doc(db("sam"), "customers/dave"), { ...newCustomer("Dave", "sam"), balanceCents: 5000 }));
+    await assertFails(setDoc(doc(db("sam"), "customers/fred"), { ...newCustomer("Fred", "sam"), balance: 0 }));
     await assertFails(setDoc(doc(db("sam"), "customers/erin"), newCustomer("Erin", "admin")));
   });
 
   it("can edit customer details but not the balance directly", async () => {
     await assertSucceeds(updateDoc(doc(db("sam"), "customers/alice"), { name: "Alice B", notes: "darts" }));
-    await assertFails(updateDoc(doc(db("sam"), "customers/bob"), { balance: 999 }));
+    await assertFails(updateDoc(doc(db("sam"), "customers/bob"), { balanceCents: 99900 }));
   });
 
-  it("can load and spend credits with a ledger entry", async () => {
-    await assertSucceeds(adjust(db("sam"), "alice", 5, "sam"));
-    await assertSucceeds(adjust(db("sam"), "alice", -15, "sam"));
+  it("can load and spend credits, including cents, with a ledger entry", async () => {
+    // Alice starts on 10.00: +5.35 -> 15.35, -15.65 would overdraw, -12.35 -> 3.00, -3.00 -> 0.00.
+    await assertSucceeds(adjust(db("sam"), "alice", 535, "sam"));
+    await assertFails(adjust(db("sam"), "alice", -1565, "sam"));
+    await assertSucceeds(adjust(db("sam"), "alice", -1235, "sam"));
+    await assertSucceeds(adjust(db("sam"), "alice", -300, "sam"));
   });
 
-  it("cannot overdraw a balance", async () => {
-    await assertFails(adjust(db("sam"), "bob", -6, "sam"));
+  it("cannot overdraw a balance, even by one cent", async () => {
+    await assertFails(adjust(db("sam"), "bob", -501, "sam"));
+    await assertSucceeds(adjust(db("sam"), "bob", -500, "sam"));
   });
 
   it("cannot fake a ledger entry", async () => {
-    await assertFails(adjust(db("sam"), "bob", 5, "sam", { amount: 1 }));
-    await assertFails(adjust(db("sam"), "bob", 5, "sam", { createdBy: "admin" }));
+    await assertFails(adjust(db("sam"), "bob", 500, "sam", { amountCents: 1 }));
+    await assertFails(adjust(db("sam"), "bob", 500, "sam", { createdBy: "admin" }));
+    await assertFails(adjust(db("sam"), "bob", 150, "sam", { amountCents: 1.5 }));
+  });
+
+  it("converts a legacy whole-credit balance on its first change", async () => {
+    // Lenny has 20 whole credits = 2000 cents, so spending 15.65 leaves 4.35.
+    await assertSucceeds(adjust(db("sam"), "lenny", -1565, "sam"));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const data = (await getDoc(doc(ctx.firestore(), "customers/lenny"))).data()!;
+      expect(data.balanceCents).toBe(435);
+      expect("balance" in data).toBe(false);
+    });
+  });
+
+  it("rejects a legacy conversion that treats whole credits as cents or keeps the old field", async () => {
+    // Pretending Lenny's 20 credits were 20 cents would wipe out 19.80 credits.
+    await assertFails(adjust(db("sam"), "lenny", -10, "sam", { balanceAfterCents: 10 }, { balanceCents: 10 }));
+    await assertFails(adjust(db("sam"), "lenny", 100, "sam", {}, { balance: 21 }));
   });
 
   it("cannot edit or delete ledger entries", async () => {
-    await adjust(db("sam"), "alice", 1, "sam");
+    await adjust(db("sam"), "alice", 100, "sam");
     let lastTxId = "";
     await env.withSecurityRulesDisabled(async (ctx) => {
       lastTxId = (await getDoc(doc(ctx.firestore(), "customers/alice"))).data()!.lastTxId;
     });
-    await assertFails(updateDoc(doc(db("sam"), "customers/alice/transactions", lastTxId), { amount: 1000 }));
+    await assertFails(updateDoc(doc(db("sam"), "customers/alice/transactions", lastTxId), { amountCents: 100000 }));
     await assertFails(deleteDoc(doc(db("sam"), "customers/alice/transactions", lastTxId)));
   });
 

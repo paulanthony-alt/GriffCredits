@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { formatCredits, MAX_TRANSACTION_CENTS, parseCreditsToCents, sanitizeCreditsInput } from "../money";
 import { adjustCredits, createCustomer, friendlyError, updateCustomer, watchCustomers } from "../services";
 import type { Customer } from "../types";
 import TransactionList from "./TransactionList";
@@ -51,7 +52,7 @@ export default function CustomersView({ staffNames }: { staffNames: Map<string, 
                   {c.name}
                   {c.notes && <span className="muted small"> · {c.notes}</span>}
                 </span>
-                <span className="customer-balance">{c.balance}</span>
+                <span className="customer-balance">{formatCredits(c.balanceCents)}</span>
               </button>
             </li>
           ))}
@@ -78,16 +79,21 @@ function CustomerDetail({ customer, staffNames }: { customer: Customer; staffNam
 
   async function apply(sign: 1 | -1, e?: FormEvent) {
     e?.preventDefault();
-    const n = Number(amount);
-    if (!Number.isInteger(n) || n <= 0) {
-      setMessage({ ok: false, text: "Enter a whole number of credits." });
+    const cents = parseCreditsToCents(amount);
+    if (cents === null || cents <= 0) {
+      setMessage({ ok: false, text: "Enter an amount like 15 or 15.65." });
+      return;
+    }
+    if (cents > MAX_TRANSACTION_CENTS) {
+      setMessage({ ok: false, text: `That's more than ${formatCredits(MAX_TRANSACTION_CENTS)} credits in one go. Check the amount.` });
       return;
     }
     setBusy(true);
     setMessage(null);
     try {
-      await adjustCredits(customer.id, sign * n, note);
-      setMessage({ ok: true, text: sign > 0 ? `Loaded ${n} credits.` : `Took ${n} credits.` });
+      await adjustCredits(customer.id, sign * cents, note);
+      const shown = formatCredits(cents);
+      setMessage({ ok: true, text: sign > 0 ? `Loaded ${shown} credits.` : `Took ${shown} credits.` });
       setAmount("");
       setNote("");
     } catch (err) {
@@ -108,7 +114,7 @@ function CustomerDetail({ customer, staffNames }: { customer: Customer; staffNam
           </button>
         </div>
         <div className="balance-sm">
-          {customer.balance}
+          {formatCredits(customer.balanceCents)}
           <div className="muted small">credits</div>
         </div>
       </div>
@@ -119,10 +125,10 @@ function CustomerDetail({ customer, staffNames }: { customer: Customer; staffNam
         <label>
           Credits
           <input
-            inputMode="numeric"
+            inputMode="decimal"
             value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
-            placeholder="e.g. 5"
+            onChange={(e) => setAmount(sanitizeCreditsInput(e.target.value))}
+            placeholder="e.g. 15.65"
           />
         </label>
         <label>

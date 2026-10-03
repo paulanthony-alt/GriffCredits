@@ -3,8 +3,12 @@ rules_version = '2';
 // Data model
 //   meta/setup                           -> exists once the first admin has been created
 //   staff/{uid}                          -> { username, name, role, createdAt }   (people who log in)
-//   customers/{id}                       -> { name, notes, balance, lastTxId, createdBy, createdAt }
-//   customers/{id}/transactions/{txId}   -> { amount, balanceAfter, note, createdBy, createdAt }
+//   customers/{id}                       -> { name, notes, balanceCents, lastTxId, createdBy, createdAt }
+//   customers/{id}/transactions/{txId}   -> { amountCents, balanceAfterCents, note, createdBy, createdAt }
+//
+// Money is stored in whole cents (15.65 credits = 1565). Records written before
+// that change have whole-credit `balance` / `amount` / `balanceAfter` fields;
+// a legacy customer's `balance` is converted the first time it changes.
 //
 // Only staff can use the app. Balances can only change together with a new
 // transaction document written in the same batch/transaction, so the ledger
@@ -46,6 +50,11 @@ service cloud.firestore {
 
     function validNotes(notes) {
       return notes is string && notes.size() <= 200;
+    }
+
+    // A customer's balance in cents, including legacy whole-credit records.
+    function balanceCentsOf(data) {
+      return data.get('balanceCents', data.get('balance', 0) * 100);
     }
 
     match /meta/setup {
@@ -96,11 +105,11 @@ service cloud.firestore {
       allow read: if isStaff();
 
       allow create: if isStaff()
-        && request.resource.data.keys().hasOnly(['name', 'notes', 'balance', 'lastTxId', 'createdBy', 'createdAt'])
-        && request.resource.data.keys().hasAll(['name', 'notes', 'balance', 'lastTxId', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'notes', 'balanceCents', 'lastTxId', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'notes', 'balanceCents', 'lastTxId', 'createdBy', 'createdAt'])
         && validName(request.resource.data.name)
         && validNotes(request.resource.data.notes)
-        && request.resource.data.balance == 0
+        && request.resource.data.balanceCents == 0
         && request.resource.data.lastTxId == null
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdAt == request.time;
@@ -112,9 +121,11 @@ service cloud.firestore {
           && validNotes(request.resource.data.notes))
         ||
         // Balance changes must come with a brand-new transaction document.
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'lastTxId'])
-          && request.resource.data.balance is int
-          && request.resource.data.balance >= 0
+        // A legacy whole-credit `balance` field must be dropped at the same time.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balanceCents', 'balance', 'lastTxId'])
+          && !('balance' in request.resource.data)
+          && request.resource.data.balanceCents is int
+          && request.resource.data.balanceCents >= 0
           && request.resource.data.lastTxId is string
           && !exists(txPath(id, request.resource.data.lastTxId))
           && existsAfter(txPath(id, request.resource.data.lastTxId)))
@@ -126,17 +137,17 @@ service cloud.firestore {
         allow read: if isStaff();
 
         allow create: if isStaff()
-          && request.resource.data.keys().hasOnly(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
-          && request.resource.data.keys().hasAll(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
-          && request.resource.data.amount is int
-          && request.resource.data.amount != 0
+          && request.resource.data.keys().hasOnly(['amountCents', 'balanceAfterCents', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.keys().hasAll(['amountCents', 'balanceAfterCents', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.amountCents is int
+          && request.resource.data.amountCents != 0
           && validNotes(request.resource.data.note)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.createdAt == request.time
           && getAfter(customerPath(id)).data.lastTxId == txId
-          && getAfter(customerPath(id)).data.balance
-               == get(customerPath(id)).data.balance + request.resource.data.amount
-          && request.resource.data.balanceAfter == getAfter(customerPath(id)).data.balance;
+          && getAfter(customerPath(id)).data.balanceCents
+               == balanceCentsOf(get(customerPath(id)).data) + request.resource.data.amountCents
+          && request.resource.data.balanceAfterCents == getAfter(customerPath(id)).data.balanceCents;
 
         // The ledger is append-only.
         allow update, delete: if false;

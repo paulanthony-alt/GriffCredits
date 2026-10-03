@@ -13,6 +13,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   limit,
@@ -24,6 +25,7 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
+  type DocumentData,
   type Unsubscribe,
 } from "firebase/firestore";
 import { auth, db, firebaseConfig, useEmulators } from "./firebase";
@@ -34,6 +36,7 @@ import {
   pinToPassword,
   usernameToEmail,
 } from "./pin";
+import { formatCredits } from "./money";
 import type { CreditTransaction, Customer, Staff, StaffRole } from "./types";
 
 // ---------- Auth ----------
@@ -131,7 +134,7 @@ export async function createCustomer(name: string, notes: string): Promise<strin
   const ref = await addDoc(collection(db, "customers"), {
     name: name.trim().slice(0, 64),
     notes: notes.trim().slice(0, 200),
-    balance: 0,
+    balanceCents: 0,
     lastTxId: null,
     createdBy: staffUid,
     createdAt: serverTimestamp(),
@@ -150,7 +153,7 @@ export function updateCustomer(id: string, name: string, notes: string): Promise
 export function watchCustomers(onChange: (c: Customer[]) => void, onError?: (e: Error) => void): Unsubscribe {
   return onSnapshot(
     query(collection(db, "customers"), orderBy("name")),
-    (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Customer)),
+    (snap) => onChange(snap.docs.map((d) => toCustomer(d.id, d.data()))),
     onError,
   );
 }
@@ -163,7 +166,7 @@ export function watchTransactions(
 ): Unsubscribe {
   return onSnapshot(
     query(collection(db, "customers", customerId, "transactions"), orderBy("createdAt", "desc"), limit(max)),
-    (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CreditTransaction)),
+    (snap) => onChange(snap.docs.map((d) => toTransaction(d.id, d.data()))),
     onError,
   );
 }
@@ -171,12 +174,12 @@ export function watchTransactions(
 // ---------- Credits ----------
 
 /**
- * Loads (positive amount) or spends (negative amount) credits for a customer.
+ * Loads (positive) or spends (negative) credits for a customer, in cents.
  * Balance and ledger entry are written atomically; spending more than the
  * balance is rejected.
  */
-export async function adjustCredits(customerId: string, amount: number, note: string): Promise<void> {
-  if (!Number.isInteger(amount) || amount === 0) throw new Error("Amount must be a whole, non-zero number.");
+export async function adjustCredits(customerId: string, amountCents: number, note: string): Promise<void> {
+  if (!Number.isSafeInteger(amountCents) || amountCents === 0) throw new Error("Enter an amount above zero.");
   const staffUid = auth.currentUser?.uid;
   if (!staffUid) throw new Error("Not signed in.");
 
@@ -186,21 +189,39 @@ export async function adjustCredits(customerId: string, amount: number, note: st
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(customerRef);
     if (!snap.exists()) throw new Error("Customer not found.");
-    const balance = snap.data().balance as number;
-    const newBalance = balance + amount;
-    if (newBalance < 0) throw new Error(`Not enough credits (balance ${balance}).`);
+    const balanceCents = toCustomer(snap.id, snap.data()).balanceCents;
+    const newBalanceCents = balanceCents + amountCents;
+    if (newBalanceCents < 0) throw new Error(`Not enough credits (balance ${formatCredits(balanceCents)}).`);
     tx.set(txRef, {
-      amount,
-      balanceAfter: newBalance,
+      amountCents,
+      balanceAfterCents: newBalanceCents,
       note: note.trim().slice(0, 200),
       createdBy: staffUid,
       createdAt: serverTimestamp(),
     });
-    tx.update(customerRef, { balance: newBalance, lastTxId: txRef.id });
+    // deleteField() drops a legacy whole-credit `balance` (see toCustomer).
+    tx.update(customerRef, { balanceCents: newBalanceCents, balance: deleteField(), lastTxId: txRef.id });
   });
 }
 
 // ---------- helpers ----------
+
+// Records written before amounts had cents store whole credits in `balance`,
+// `amount` and `balanceAfter`; these read either shape as cents.
+function toCustomer(id: string, d: DocumentData): Customer {
+  const { balance, ...rest } = d;
+  return { id, ...rest, balanceCents: d.balanceCents ?? (balance ?? 0) * 100 } as Customer;
+}
+
+function toTransaction(id: string, d: DocumentData): CreditTransaction {
+  const { amount, balanceAfter, ...rest } = d;
+  return {
+    id,
+    ...rest,
+    amountCents: d.amountCents ?? amount * 100,
+    balanceAfterCents: d.balanceAfterCents ?? balanceAfter * 100,
+  } as CreditTransaction;
+}
 
 function validateNewStaff(name: string, rawUsername: string, pin: string): string {
   const username = normalizeUsername(rawUsername);
