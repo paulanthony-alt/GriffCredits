@@ -37,6 +37,7 @@ import {
   usernameToEmail,
 } from "./pin";
 import { formatCredits } from "./money";
+import { byName } from "./names";
 import type { CreditTransaction, Customer, Staff, StaffRole } from "./types";
 
 // ---------- Auth ----------
@@ -119,8 +120,8 @@ export function watchStaffMember(uid: string, onChange: (s: Staff | null) => voi
 
 export function watchAllStaff(onChange: (s: Staff[]) => void, onError?: (e: Error) => void): Unsubscribe {
   return onSnapshot(
-    query(collection(db, "staff"), orderBy("name")),
-    (snap) => onChange(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as Staff)),
+    collection(db, "staff"),
+    (snap) => onChange(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as Staff).sort(byName)),
     onError,
   );
 }
@@ -152,8 +153,8 @@ export function updateCustomer(id: string, name: string, notes: string): Promise
 
 export function watchCustomers(onChange: (c: Customer[]) => void, onError?: (e: Error) => void): Unsubscribe {
   return onSnapshot(
-    query(collection(db, "customers"), orderBy("name")),
-    (snap) => onChange(snap.docs.map((d) => toCustomer(d.id, d.data()))),
+    collection(db, "customers"),
+    (snap) => onChange(snap.docs.map((d) => toCustomer(d.id, d.data())).sort(byName)),
     onError,
   );
 }
