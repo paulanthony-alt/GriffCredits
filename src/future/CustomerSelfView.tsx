@@ -10,6 +10,7 @@
  *  3. In App.tsx, when the signed-in user is a customer rather than staff,
  *     render <CustomerSelfView customer={...} /> instead of the staff Dashboard.
  */
+import { formatCredits } from "../money";
 import { signOutUser } from "../services";
 import type { Customer } from "../types";
 import TransactionList from "../components/TransactionList";
@@ -27,7 +28,7 @@ export default function CustomerSelfView({ customer }: { customer: Customer }) {
       <main className="container">
         <section className="card balance-card">
           <div className="muted">Your balance</div>
-          <div className="balance">{customer.balance}</div>
+          <div className="balance">{formatCredits(customer.balanceCents)}</div>
           <div className="muted">credits</div>
         </section>
         <section className="card">

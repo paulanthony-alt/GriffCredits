@@ -31,9 +31,15 @@ involved.
 ```
 meta/setup                            exists once the first admin is created
 staff/{uid}                           username, name, role (staff|admin)       people who sign in
-customers/{id}                        name, notes, balance, lastTxId, createdBy
-customers/{id}/transactions/{txId}    amount (+ loaded / − spent), balanceAfter, note, createdBy (staff uid), createdAt
+customers/{id}                        name, notes, balanceCents, lastTxId, createdBy
+customers/{id}/transactions/{txId}    amountCents (+ loaded / − spent), balanceAfterCents, note, createdBy (staff uid), createdAt
 ```
+
+Credits work like dollars, with up to two decimal places. They're stored as
+whole **cents** (15.65 credits = `1565`) so there's no floating-point rounding
+(`src/money.ts`). Records from before cents were added hold whole credits in
+`balance` / `amount` / `balanceAfter`; the app reads both, and a legacy
+customer's balance is converted the first time it changes.
 
 `firestore.rules` enforces:
 
