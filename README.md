@@ -60,22 +60,11 @@ VITE_USE_EMULATORS=true npm run dev   # terminal 2: app at http://localhost:5173
 The first visit shows **first-time setup**: create the admin account, then add
 staff from the **Staff** tab and customers from the **Customers** tab.
 
-### 2. Connect a real Firebase project
+### 2. Connect a real Firebase project and go live
 
-1. Create a project at <https://console.firebase.google.com>.
-2. **Authentication → Sign-in method →** enable **Email/Password**.
-3. **Firestore Database →** create a database.
-4. **Project settings → Your apps →** add a Web app and copy its config.
-5. `cp .env.example .env.local` and fill in the `VITE_FIREBASE_*` values.
-6. Deploy the security rules (and optionally host the app):
-   ```bash
-   npx firebase login
-   npx firebase use --add          # pick your project
-   npx firebase deploy --only firestore:rules
-   npm run build && npx firebase deploy --only hosting
-   ```
-7. Open the app and complete first-time setup **straight away**, since whoever
-   does it first becomes admin.
+Follow **[SETUP.md](SETUP.md)**: create the project, add its settings to
+`.env.production`, add one GitHub secret, and every push to `main` deploys
+automatically via `.github/workflows/deploy.yml`.
 
 ## Scripts
 
