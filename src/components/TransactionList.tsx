@@ -2,14 +2,20 @@ import { useEffect, useState } from "react";
 import { friendlyError, watchTransactions } from "../services";
 import type { CreditTransaction } from "../types";
 
-export default function TransactionList({ uid }: { uid: string }) {
+interface Props {
+  customerId: string;
+  /** staff uid -> name; when given, each entry shows who recorded it. */
+  staffNames?: Map<string, string>;
+}
+
+export default function TransactionList({ customerId, staffNames }: Props) {
   const [txs, setTxs] = useState<CreditTransaction[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setTxs(null);
-    return watchTransactions(uid, setTxs, (e) => setError(friendlyError(e)));
-  }, [uid]);
+    return watchTransactions(customerId, setTxs, (e) => setError(friendlyError(e)));
+  }, [customerId]);
 
   if (error) return <p className="error">{error}</p>;
   if (!txs) return <p className="muted">Loading history…</p>;
@@ -20,8 +26,11 @@ export default function TransactionList({ uid }: { uid: string }) {
       {txs.map((t) => (
         <li key={t.id}>
           <div>
-            <div>{t.note || (t.amount > 0 ? "Credits added" : "Credits spent")}</div>
-            <div className="muted small">{t.createdAt ? t.createdAt.toDate().toLocaleString() : "just now"}</div>
+            <div>{t.note || (t.amount > 0 ? "Credits loaded" : "Credits spent")}</div>
+            <div className="muted small">
+              {t.createdAt ? t.createdAt.toDate().toLocaleString() : "just now"}
+              {staffNames && ` · by ${staffNames.get(t.createdBy) ?? "former staff"}`}
+            </div>
           </div>
           <div className="tx-right">
             <div className={t.amount > 0 ? "amount plus" : "amount minus"}>

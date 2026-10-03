@@ -1,8 +1,14 @@
 # Griff Credits
 
-Track members' credits at the Griff. Members sign in with a **username + PIN**
-to see their balance and history; admins add credits, record spending, and
-create member accounts.
+A staff tool for tracking customers' credits at the Griff. Staff sign in with a
+**username + PIN**, look up a customer, load credits onto their balance, and
+take credits off as they spend. Customers don't sign in (yet). See
+`src/future/CustomerSelfView.tsx` for a parked "check my own balance" screen.
+
+**Roles**
+
+- **Staff**: add customers, edit their details, load and spend credits.
+- **Admin**: everything staff can do, plus add and remove staff accounts.
 
 Built with React + TypeScript (Vite) and Firebase (Auth + Firestore).
 
@@ -11,9 +17,9 @@ Built with React + TypeScript (Vite) and Firebase (Auth + Firestore).
 Firebase Auth has no built-in PIN sign-in, so each username/PIN pair maps onto
 a hidden email/password account (`src/pin.ts`):
 
-| What the member types | What Firebase sees |
+| What staff type | What Firebase sees |
 | --- | --- |
-| username `dave` | `dave@members.griffcredits.local` |
+| username `sam` | `sam@staff.griffcredits.local` |
 | PIN `1234` | password `griff-pin:1234` |
 
 Firebase Auth's built-in rate limiting slows down PIN guessing. A 4–6 digit
@@ -23,17 +29,19 @@ involved.
 ## Data model & security
 
 ```
-meta/setup                        exists once the first admin is created
-users/{uid}                       username, name, role (member|admin), balance, lastTxId
-users/{uid}/transactions/{txId}   amount (+ added / − spent), balanceAfter, note, createdBy, createdAt
+meta/setup                            exists once the first admin is created
+staff/{uid}                           username, name, role (staff|admin)       people who sign in
+customers/{id}                        name, notes, balance, lastTxId, createdBy
+customers/{id}/transactions/{txId}    amount (+ loaded / − spent), balanceAfter, note, createdBy (staff uid), createdAt
 ```
 
 `firestore.rules` enforces:
 
-- Members can read only their own profile and history.
-- Only admins can create members or change balances.
-- Every balance change must be written together with a new ledger entry whose
-  amount matches the change, so the balance always adds up.
+- Only staff can read or change anything; removing a staff record revokes access.
+- Only admins can add, change or remove staff (and can't remove themselves).
+- New customers start at zero. Every balance change must be written together
+  with a new ledger entry whose amount matches the change, so the balance
+  always adds up, and each entry records which staff member made it.
 - Balances can't go below zero; ledger entries can't be edited or deleted.
 - First-time setup (the first admin) can only happen once.
 
@@ -50,7 +58,7 @@ VITE_USE_EMULATORS=true npm run dev   # terminal 2: app at http://localhost:5173
 ```
 
 The first visit shows **first-time setup**: create the admin account, then add
-members from the admin screen.
+staff from the **Staff** tab and customers from the **Customers** tab.
 
 ### 2. Connect a real Firebase project
 
@@ -84,9 +92,10 @@ members from the admin screen.
 src/
   firebase.ts        Firebase init (+ emulator wiring)
   pin.ts             username/PIN ↔ Firebase credential mapping
-  services.ts        sign in, setup, create member, adjust credits, live queries
+  services.ts        sign in, setup, staff + customer management, credits, live queries
   AuthContext.tsx    current user + profile
-  components/        Login (PIN pad + first-time setup), MemberDashboard, AdminDashboard, …
+  components/        Login (PIN pad + first-time setup), Dashboard, CustomersView, StaffView, …
+  future/            parked, unused code (customer self-view)
 firestore.rules      security rules
 tests/               rules tests
 ```
@@ -98,7 +107,8 @@ tests/               rules tests
 - **Stronger PIN protection**: move sign-in into a Cloud Function that checks
   the PIN, locks out after N failures, and returns a custom token. Turn on
   Firebase App Check.
-- **Staff role**: a role that can record spending but not manage members.
-- **Account clean-up**: if creating a member's profile fails after their login
-  was created, the orphaned login has no access but still holds the username.
-  Remove it in the Firebase console.
+- **Customer self-view**: let customers sign in to check their balance; the
+  steps are in `src/future/CustomerSelfView.tsx`.
+- **Account clean-up**: removing a staff member revokes their access but leaves
+  their Firebase login holding the username; delete it in the Firebase console
+  if you want to reuse the name.

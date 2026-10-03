@@ -114,8 +114,8 @@ function FirstTimeSetup() {
   return (
     <div className="centered">
       <form className="card narrow" onSubmit={submit}>
-        <h1 className="brand-lg">Welcome to Griff Credits</h1>
-        <p className="muted">No accounts exist yet. Create the first admin account to get started.</p>
+        <h1 className="brand-lg">Griff Credits setup</h1>
+        <p className="muted">No staff accounts exist yet. Create the first admin account to get started.</p>
         <label>
           Your name
           <input value={name} onChange={(e) => setName(e.target.value)} required />

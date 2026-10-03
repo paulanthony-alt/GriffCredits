@@ -84,8 +84,7 @@ h1, h2, h3 { margin: 0 0 0.5rem; }
   gap: 16px;
 }
 @media (min-width: 800px) {
-  .container.admin { grid-template-columns: 1fr 1.2fr; align-items: start; }
-  .container.admin > :last-child { grid-column: 1 / -1; justify-self: start; }
+  .container.split { grid-template-columns: 1fr 1.2fr; align-items: start; }
 }
 
 label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; color: var(--muted); }
@@ -144,7 +143,7 @@ button.wide { width: 100%; padding: 0.8rem; }
 .balance { font-size: 3.5rem; font-weight: 700; color: var(--accent); line-height: 1; }
 .balance-sm { font-size: 2rem; font-weight: 700; color: var(--accent); text-align: right; }
 
-.tx-list, .member-list { list-style: none; margin: 0; padding: 0; }
+.tx-list, .customer-list { list-style: none; margin: 0; padding: 0; }
 .tx-list li {
   display: flex;
   justify-content: space-between;
@@ -157,8 +156,8 @@ button.wide { width: 100%; padding: 0.8rem; }
 .amount.plus { color: var(--plus); }
 .amount.minus { color: var(--minus); }
 
-.member-list { max-height: 60vh; overflow-y: auto; }
-.member {
+.customer-list { max-height: 60vh; overflow-y: auto; }
+.customer-row {
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -168,10 +167,10 @@ button.wide { width: 100%; padding: 0.8rem; }
   border-radius: 0;
   background: transparent;
 }
-.member.selected { background: var(--bg); }
-.member-balance { font-weight: 700; color: var(--accent); }
+.customer-row.selected { background: var(--bg); }
+.customer-balance { font-weight: 700; color: var(--accent); }
 
-.add-member, .adjust {
+.inline-form, .adjust {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -181,3 +180,26 @@ button.wide { width: 100%; padding: 0.8rem; }
 }
 
 .container > button.ghost { justify-self: start; }
+
+.container + .container { padding-top: 0; }
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 12px 16px 0;
+}
+.tab { border-radius: 999px; background: transparent; }
+.tab.active { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); }
+
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.tx-list li { align-items: center; }

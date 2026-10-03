@@ -1,12 +1,12 @@
-// Firebase Auth has no native "PIN" sign-in, so a member's username and PIN are
+// Firebase Auth has no native "PIN" sign-in, so a staff member's username and PIN are
 // mapped onto an email/password account that nobody ever sees:
-//   username "dave", PIN "1234"  ->  dave@members.griffcredits.local / griff-pin:1234
+//   username "sam", PIN "1234"  ->  sam@staff.griffcredits.local / griff-pin:1234
 // The prefix also satisfies Firebase's 6-character minimum password length.
 
 export const PIN_MIN_LENGTH = 4;
 export const PIN_MAX_LENGTH = 6;
 
-const EMAIL_DOMAIN = "members.griffcredits.local";
+const EMAIL_DOMAIN = "staff.griffcredits.local";
 const PASSWORD_PREFIX = "griff-pin:";
 
 export function normalizeUsername(raw: string): string {

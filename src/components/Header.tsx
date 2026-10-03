@@ -1,7 +1,7 @@
 import { signOutUser } from "../services";
-import type { Member } from "../types";
+import type { Staff } from "../types";
 
-export default function Header({ me }: { me: Member }) {
+export default function Header({ me }: { me: Staff }) {
   return (
     <header className="header">
       <div className="brand">Griff Credits</div>
