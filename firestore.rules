@@ -1,0 +1,146 @@
+rules_version = '2';
+
+// Data model
+//   meta/setup                           -> exists once the first admin has been created
+//   staff/{uid}                          -> { username, name, role, createdAt }   (people who log in)
+//   customers/{id}                       -> { name, notes, balance, lastTxId, createdBy, createdAt }
+//   customers/{id}/transactions/{txId}   -> { amount, balanceAfter, note, createdBy, createdAt }
+//
+// Only staff can use the app. Balances can only change together with a new
+// transaction document written in the same batch/transaction, so the ledger
+// always explains the balance.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function staffPath(uid) {
+      return /databases/$(database)/documents/staff/$(uid);
+    }
+
+    function customerPath(id) {
+      return /databases/$(database)/documents/customers/$(id);
+    }
+
+    function txPath(id, txId) {
+      return /databases/$(database)/documents/customers/$(id)/transactions/$(txId);
+    }
+
+    function setupPath() {
+      return /databases/$(database)/documents/meta/setup;
+    }
+
+    function isStaff() {
+      return signedIn() && exists(staffPath(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isStaff() && get(staffPath(request.auth.uid)).data.role == 'admin';
+    }
+
+    function validName(name) {
+      return name is string && name.size() > 0 && name.size() <= 64;
+    }
+
+    function validNotes(notes) {
+      return notes is string && notes.size() <= 200;
+    }
+
+    match /meta/setup {
+      // The login screen needs to know whether to show first-time setup.
+      allow read: if true;
+      // Only creatable once, together with the first admin's staff document.
+      allow create: if signedIn()
+        && !exists(setupPath())
+        && request.resource.data.keys().hasOnly(['adminUid', 'createdAt'])
+        && request.resource.data.adminUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(staffPath(request.auth.uid)).data.role == 'admin';
+      allow update, delete: if false;
+    }
+
+    match /staff/{uid} {
+      // Everyone can read their own record, so the app can tell a signed-in
+      // non-staff login (or someone mid-setup) that they have no access.
+      allow read: if isStaff() || (signedIn() && request.auth.uid == uid);
+
+      allow create: if request.resource.data.keys().hasOnly(['username', 'name', 'role', 'createdAt'])
+        && request.resource.data.keys().hasAll(['username', 'name', 'role', 'createdAt'])
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[a-z0-9_.-]{2,32}$')
+        && validName(request.resource.data.name)
+        && request.resource.data.role in ['staff', 'admin']
+        && request.resource.data.createdAt == request.time
+        && (
+          isAdmin()
+          // First-time setup: the very first person makes themselves admin.
+          || (signedIn()
+              && request.auth.uid == uid
+              && request.resource.data.role == 'admin'
+              && !exists(setupPath())
+              && existsAfter(setupPath()))
+        );
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role'])
+        && validName(request.resource.data.name)
+        && request.resource.data.role in ['staff', 'admin'];
+
+      // Removing the staff document revokes access. Admins can't remove themselves.
+      allow delete: if isAdmin() && request.auth.uid != uid;
+    }
+
+    match /customers/{id} {
+      allow read: if isStaff();
+
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(['name', 'notes', 'balance', 'lastTxId', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'notes', 'balance', 'lastTxId', 'createdBy', 'createdAt'])
+        && validName(request.resource.data.name)
+        && validNotes(request.resource.data.notes)
+        && request.resource.data.balance == 0
+        && request.resource.data.lastTxId == null
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isStaff() && (
+        // Details edits: name / notes only.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'notes'])
+          && validName(request.resource.data.name)
+          && validNotes(request.resource.data.notes))
+        ||
+        // Balance changes must come with a brand-new transaction document.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'lastTxId'])
+          && request.resource.data.balance is int
+          && request.resource.data.balance >= 0
+          && request.resource.data.lastTxId is string
+          && !exists(txPath(id, request.resource.data.lastTxId))
+          && existsAfter(txPath(id, request.resource.data.lastTxId)))
+      );
+
+      allow delete: if false;
+
+      match /transactions/{txId} {
+        allow read: if isStaff();
+
+        allow create: if isStaff()
+          && request.resource.data.keys().hasOnly(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.keys().hasAll(['amount', 'balanceAfter', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.amount is int
+          && request.resource.data.amount != 0
+          && validNotes(request.resource.data.note)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && getAfter(customerPath(id)).data.lastTxId == txId
+          && getAfter(customerPath(id)).data.balance
+               == get(customerPath(id)).data.balance + request.resource.data.amount
+          && request.resource.data.balanceAfter == getAfter(customerPath(id)).data.balance;
+
+        // The ledger is append-only.
+        allow update, delete: if false;
+      }
+    }
+  }
+}
