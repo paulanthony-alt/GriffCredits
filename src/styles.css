@@ -203,3 +203,8 @@ button.link {
 }
 
 .tx-list li { align-items: center; }
+
+.tx-list li.undone .amount { text-decoration: line-through; opacity: 0.6; }
+.tx-list li.is-undo { color: var(--muted); }
+.badge.muted-badge { background: var(--border); color: var(--text); }
+.tx-right button.link { margin-top: 0.15rem; }

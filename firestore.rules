@@ -4,7 +4,8 @@ rules_version = '2';
 //   meta/setup                           -> exists once the first admin has been created
 //   staff/{uid}                          -> { username, name, role, createdAt }   (people who log in)
 //   customers/{id}                       -> { name, notes, balanceCents, lastTxId, createdBy, createdAt }
-//   customers/{id}/transactions/{txId}   -> { amountCents, balanceAfterCents, note, createdBy, createdAt }
+//   customers/{id}/transactions/{txId}   -> { amountCents, balanceAfterCents, note, createdBy, createdAt,
+//                                             reversesTxId? }
 //
 // Money is stored in whole cents (15.65 credits = 1565). Records written before
 // that change have whole-credit `balance` / `amount` / `balanceAfter` fields;
@@ -13,6 +14,10 @@ rules_version = '2';
 // Only staff can use the app. Balances can only change together with a new
 // transaction document written in the same batch/transaction, so the ledger
 // always explains the balance.
+//
+// Undo never edits or deletes an entry: it appends a reversing entry with the
+// id "undo-<original id>" and the opposite amount. That fixed id means each
+// entry can be undone at most once, and an undo itself can't be undone.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -55,6 +60,11 @@ service cloud.firestore {
     // A customer's balance in cents, including legacy whole-credit records.
     function balanceCentsOf(data) {
       return data.get('balanceCents', data.get('balance', 0) * 100);
+    }
+
+    // A transaction's amount in cents, including legacy whole-credit records.
+    function amountCentsOf(data) {
+      return data.get('amountCents', data.get('amount', 0) * 100);
     }
 
     match /meta/setup {
@@ -137,7 +147,7 @@ service cloud.firestore {
         allow read: if isStaff();
 
         allow create: if isStaff()
-          && request.resource.data.keys().hasOnly(['amountCents', 'balanceAfterCents', 'note', 'createdBy', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['amountCents', 'balanceAfterCents', 'note', 'createdBy', 'createdAt', 'reversesTxId'])
           && request.resource.data.keys().hasAll(['amountCents', 'balanceAfterCents', 'note', 'createdBy', 'createdAt'])
           && request.resource.data.amountCents is int
           && request.resource.data.amountCents != 0
@@ -147,7 +157,19 @@ service cloud.firestore {
           && getAfter(customerPath(id)).data.lastTxId == txId
           && getAfter(customerPath(id)).data.balanceCents
                == balanceCentsOf(get(customerPath(id)).data) + request.resource.data.amountCents
-          && request.resource.data.balanceAfterCents == getAfter(customerPath(id)).data.balanceCents;
+          && request.resource.data.balanceAfterCents == getAfter(customerPath(id)).data.balanceCents
+          && (
+            // A normal load or spend.
+            (!('reversesTxId' in request.resource.data) && !txId.matches('^undo-.*'))
+            ||
+            // An undo: exactly reverses an existing entry that isn't itself an undo.
+            (request.resource.data.reversesTxId is string
+              && !request.resource.data.reversesTxId.matches('^undo-.*')
+              && txId == 'undo-' + request.resource.data.reversesTxId
+              && exists(txPath(id, request.resource.data.reversesTxId))
+              && request.resource.data.amountCents
+                   == -amountCentsOf(get(txPath(id, request.resource.data.reversesTxId)).data))
+          );
 
         // The ledger is append-only.
         allow update, delete: if false;

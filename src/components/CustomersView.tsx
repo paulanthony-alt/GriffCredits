@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { formatCredits, MAX_TRANSACTION_CENTS, parseCreditsToCents, sanitizeCreditsInput } from "../money";
-import { adjustCredits, createCustomer, friendlyError, updateCustomer, watchCustomers } from "../services";
-import type { Customer } from "../types";
+import { adjustCredits, createCustomer, friendlyError, undoTransaction, updateCustomer, watchCustomers } from "../services";
+import type { CreditTransaction, Customer } from "../types";
 import TransactionList from "./TransactionList";
 
 export default function CustomersView({ staffNames }: { staffNames: Map<string, string> }) {
@@ -103,6 +103,18 @@ function CustomerDetail({ customer, staffNames }: { customer: Customer; staffNam
     }
   }
 
+  async function undo(t: CreditTransaction) {
+    const what = `${t.amountCents > 0 ? "+" : "−"}${formatCredits(Math.abs(t.amountCents))}${t.note ? ` (${t.note})` : ""}`;
+    if (!confirm(`Undo ${what} for ${customer.name}? The amount goes back and the history keeps a record of the undo.`)) return;
+    setMessage(null);
+    try {
+      await undoTransaction(customer.id, t.id);
+      setMessage({ ok: true, text: `Undid ${what}.` });
+    } catch (err) {
+      setMessage({ ok: false, text: friendlyError(err) });
+    }
+  }
+
   return (
     <>
       <div className="row spread">
@@ -143,7 +155,7 @@ function CustomerDetail({ customer, staffNames }: { customer: Customer; staffNam
       </form>
 
       <h3>History</h3>
-      <TransactionList customerId={customer.id} staffNames={staffNames} />
+      <TransactionList customerId={customer.id} staffNames={staffNames} onUndo={undo} />
     </>
   );
 }
