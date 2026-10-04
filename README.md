@@ -10,6 +10,10 @@ take credits off as they spend. Customers don't sign in (yet). See
 - **Staff**: add customers, edit their details, load and spend credits.
 - **Admin**: everything staff can do, plus add and remove staff accounts.
 
+The Customers screen shows the **total credits out there** (the sum of every
+customer's balance), which updates live on every device as credits are loaded,
+spent or undone (`src/totals.ts`).
+
 Built with React + TypeScript (Vite) and Firebase (Auth + Firestore).
 
 ## How PIN login works
