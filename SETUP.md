@@ -125,60 +125,6 @@ completes it becomes the admin, so do it right away:
 **Tip for the bar tablet/phone:** open the site, then use **Add to Home Screen**
 (Safari share menu, or the Chrome ⋮ menu). It then opens like an app.
 
-## 9. Turn on backups and weekly checks
-
-**Daily backup:** every morning (07:17 UTC) GitHub copies the whole database
-(customers, their full history, staff records) into a file, **encrypts it with
-a password**, and keeps it for 90 days. The encryption matters because the
-repository is public, so anyone could otherwise download the file.
-
-**Weekly check:** every Monday (07:47 UTC) GitHub:
-- runs all the app's tests;
-- looks for known security problems in the app's libraries;
-- checks the live site is up;
-- checks every customer's balance adds up to their history.
-
-If anything fails, it opens a GitHub **issue**, which emails you, and closes
-it again by itself once things are fixed. Reports only ever show random record
-IDs, never names or balances.
-
-### One-time setup: the backup password
-
-1. Make up a long password, e.g. four random words. **Write it down and keep it
-   somewhere safe outside GitHub.** Without it, the backups can't be opened.
-2. On GitHub: **Settings → Secrets and variables → Actions → New repository
-   secret**. Name: `BACKUP_PASSWORD`, Secret: your password → **Add secret**.
-3. Check it works: **Actions → Daily backup → Run workflow**. After a minute
-   it should show a green tick and a file under **Artifacts**.
-4. Optionally, do the same for **Actions → Weekly check → Run workflow**.
-
-Never change `BACKUP_PASSWORD` once backups exist: older backups need the
-password they were made with.
-
-### Restoring a backup
-
-Only do this if the data has actually gone wrong. It replaces **all** current
-customers, history and staff records with the backup's.
-
-1. Go to **Actions → Daily backup** and click the run from the day you want to
-   go back to. Its address ends in a number, e.g.
-   `.../actions/runs/37137614900`. That number is the **run ID**.
-2. Go to **Actions → Restore from backup → Run workflow**. Enter the run ID and
-   type `RESTORE` in the confirm box, then click **Run workflow**.
-3. Before restoring, it saves a backup of the current data. If you restored the
-   wrong one, the run's summary gives the run ID to undo it.
-
-Staff logins (usernames and PINs) aren't affected by a restore.
-
-### Recommended: make the repository private
-
-GitHub **pauses scheduled jobs (backups and weekly checks) in public
-repositories after 60 days without any changes**. A private repository doesn't
-have that limit, and keeps the code and job logs private too. Make it private
-under **Settings → General → Danger Zone → Change repository visibility**.
-Private repositories get 2,000 free minutes of GitHub Actions a month, and
-these jobs use well under 100.
-
 ---
 
 ## Troubleshooting
@@ -192,8 +138,6 @@ these jobs use well under 100.
 | Deploy fails on Firestore rules | Make sure step 3 was completed (database created). |
 | Site says "Griff Credits isn't connected yet" | `.env.production` is missing or incomplete. Check the six values from step 5. |
 | Sign-in says "Wrong username or PIN" for everyone | Check Email/Password is enabled (step 2). |
-| Backup or weekly check fails: `BACKUP_PASSWORD ... missing` | Do the backup password steps in section 9. |
-| Restore fails: `Couldn't decrypt the backup` | `BACKUP_PASSWORD` was changed after that backup was made. Put the old password back temporarily. |
 | A staff member forgot their PIN | For now, an admin removes them in the Staff tab, deletes their login under **Authentication → Users** in the Firebase console, and adds them again. |
 
 ## Custom domain (optional)

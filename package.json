@@ -9,10 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "emulators": "firebase emulators:start --project demo-griff-credits",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\"",
-    "backup": "tsx scripts/backup.ts",
-    "restore": "tsx scripts/restore.ts",
-    "check:data": "tsx scripts/check.ts"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\""
   },
   "dependencies": {
     "firebase": "^12.3.0",
