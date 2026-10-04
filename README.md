@@ -10,6 +10,10 @@ take credits off as they spend. Customers don't sign in (yet). See
 - **Staff**: add customers, edit their details, load and spend credits.
 - **Admin**: everything staff can do, plus add and remove staff accounts.
 
+The Customers screen shows the **total credits out there** (the sum of every
+customer's balance), which updates live on every device as credits are loaded,
+spent or undone (`src/totals.ts`).
+
 Built with React + TypeScript (Vite) and Firebase (Auth + Firestore).
 
 ## How PIN login works
@@ -53,6 +57,14 @@ customer's balance is converted the first time it changes.
   opposite amount, so each entry can be undone once and an undo can't be undone.
 - First-time setup (the first admin) can only happen once.
 
+## Backups and weekly checks (parked)
+
+Daily encrypted backups, a one-click restore, and a weekly check (tests,
+dependency audit, live-site check, and a check that every balance matches its
+history) are built but **parked** in
+[`future/backups-and-weekly-checks/`](future/backups-and-weekly-checks/), where
+they don't run. Its README explains how to switch them on.
+
 ## Getting started
 
 ### 1. Run locally with the Firebase emulators (no Firebase project needed)
@@ -81,7 +93,7 @@ automatically via `.github/workflows/deploy.yml`.
 | `npm run dev` | Dev server |
 | `npm run build` | Typecheck + production build to `dist/` |
 | `npm run emulators` | Local Auth + Firestore emulators |
-| `npm run test:rules` | Security-rules tests against the Firestore emulator |
+| `npm run test:rules` | All tests (including parked features') against the Firestore emulator |
 
 ## Project layout
 
@@ -93,8 +105,9 @@ src/
   AuthContext.tsx    current user + profile
   components/        Login (PIN pad + first-time setup), Dashboard, CustomersView, StaffView, …
   future/            parked, unused code (customer self-view)
+future/              parked features (backups and weekly checks)
 firestore.rules      security rules
-tests/               rules tests
+tests/               tests
 ```
 
 ## Hardening / next steps

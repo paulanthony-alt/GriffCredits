@@ -208,3 +208,6 @@ button.link {
 .tx-list li.is-undo { color: var(--muted); }
 .badge.muted-badge { background: var(--border); color: var(--text); }
 .tx-right button.link { margin-top: 0.15rem; }
+
+.totals-card { grid-column: 1 / -1; align-items: center; text-align: center; gap: 0.25rem; }
+.total-amount { font-size: 2.5rem; font-weight: 700; color: var(--accent); line-height: 1.1; }

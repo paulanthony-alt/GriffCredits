@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { formatCredits, MAX_TRANSACTION_CENTS, parseCreditsToCents, sanitizeCreditsInput } from "../money";
+import { creditTotals } from "../totals";
 import { adjustCredits, createCustomer, friendlyError, undoTransaction, updateCustomer, watchCustomers } from "../services";
 import type { CreditTransaction, Customer } from "../types";
 import TransactionList from "./TransactionList";
@@ -22,9 +23,20 @@ export default function CustomersView({ staffNames }: { staffNames: Map<string, 
   }, [customers, search]);
 
   const selected = customers?.find((c) => c.id === selectedId) ?? null;
+  // Across all customers, not just the search results. Updates live as anyone loads or spends.
+  const totals = useMemo(() => (customers ? creditTotals(customers) : null), [customers]);
 
   return (
     <main className="container split">
+      {totals && (
+        <section className="card totals-card" aria-live="polite">
+          <div className="muted">Total credits out there</div>
+          <div className="total-amount">{formatCredits(totals.outstandingCents)}</div>
+          <div className="muted small">
+            held by {totals.customersWithCredit} of {customers!.length} customer{customers!.length === 1 ? "" : "s"}
+          </div>
+        </section>
+      )}
       <section className="card">
         <div className="row spread">
           <h2>Customers</h2>
