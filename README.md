@@ -63,7 +63,10 @@ GitHub Actions back up the database daily (encrypted, kept 90 days) and run a
 weekly check: tests, a dependency security audit, a live-site check, and a
 data health check that every balance matches its history. Failures open a
 GitHub issue. Restoring is a one-click workflow that first backs up the current
-data. Setup and restore steps: [SETUP.md, section 9](SETUP.md#9-turn-on-backups-and-weekly-checks).
+data. Every week a password-protected **PDF report** (who has what, the week's
+activity, and each customer's full history) is saved too, and admins can
+download the same report from the app at any time (`src/report/`). Setup,
+restore and download steps: [SETUP.md, section 9](SETUP.md#9-turn-on-backups-weekly-checks-and-weekly-reports).
 
 ## Getting started
 
@@ -97,6 +100,7 @@ automatically via `.github/workflows/deploy.yml`.
 | `npm run backup -- <file>` | Back up the live database to a JSON file (needs a service-account key) |
 | `npm run restore -- <file> --yes-replace-everything` | Replace ALL live data with a backup |
 | `npm run check:data -- [report.md]` | Check every balance against its history |
+| `npm run report -- <file.pdf>` | Write the PDF report (set `REPORT_PASSWORD` to lock it, `REPORT_TIMEZONE` for dates) |
 
 ## Project layout
 
@@ -108,7 +112,7 @@ src/
   AuthContext.tsx    current user + profile
   components/        Login (PIN pad + first-time setup), Dashboard, CustomersView, StaffView, …
   future/            parked, unused code (customer self-view)
-scripts/             backup, restore and data health check (run by GitHub Actions)
+scripts/             backup, restore, data health check and PDF report (run by GitHub Actions)
 firestore.rules      security rules
 tests/               tests
 ```

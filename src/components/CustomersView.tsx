@@ -5,7 +5,7 @@ import { adjustCredits, createCustomer, friendlyError, undoTransaction, updateCu
 import type { CreditTransaction, Customer } from "../types";
 import TransactionList from "./TransactionList";
 
-export default function CustomersView({ staffNames }: { staffNames: Map<string, string> }) {
+export default function CustomersView({ staffNames, isAdmin }: { staffNames: Map<string, string>; isAdmin: boolean }) {
   const [customers, setCustomers] = useState<Customer[] | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -35,6 +35,7 @@ export default function CustomersView({ staffNames }: { staffNames: Map<string, 
           <div className="muted small">
             held by {totals.customersWithCredit} of {customers!.length} customer{customers!.length === 1 ? "" : "s"}
           </div>
+          {isAdmin && <ReportButton staffNames={staffNames} />}
         </section>
       )}
       <section className="card">
@@ -79,6 +80,34 @@ export default function CustomersView({ staffNames }: { staffNames: Map<string, 
         )}
       </section>
     </main>
+  );
+}
+
+function ReportButton({ staffNames }: { staffNames: Map<string, string> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function download() {
+    setBusy(true);
+    setError("");
+    try {
+      // Loaded on demand: the PDF library is large and only admins use it.
+      const { downloadReport } = await import("../report/download");
+      await downloadReport(staffNames);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button className="ghost report-button" onClick={download} disabled={busy}>
+        {busy ? "Preparing report…" : "Download report (PDF)"}
+      </button>
+      {error && <p className="error small">{error}</p>}
+    </>
   );
 }
 

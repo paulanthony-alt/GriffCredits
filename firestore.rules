@@ -111,6 +111,12 @@ service cloud.firestore {
       allow delete: if isAdmin() && request.auth.uid != uid;
     }
 
+    // Lets staff read every customer's history in one query (the PDF report).
+    // Only customers/{id}/transactions exist, and writes stay governed below.
+    match /{path=**}/transactions/{txId} {
+      allow read: if isStaff();
+    }
+
     match /customers/{id} {
       allow read: if isStaff();
 

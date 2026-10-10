@@ -1,0 +1,81 @@
+name: Weekly report
+
+# At the end of each week, saves a PDF of who has what credit and everything
+# loaded/spent (this week, and each customer's full history), so there's a
+# readable record even if the website is down. The PDF is locked with the
+# BACKUP_PASSWORD secret (AES-256) because files on a public repository can be
+# downloaded by anyone. Kept for 90 days. See SETUP.md, "Weekly report".
+on:
+  schedule:
+    - cron: "7 4 * * 1" # Mondays 04:07 UTC: late Sunday night in the US
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: database
+  cancel-in-progress: false
+
+env:
+  # Time zone for every date and time printed in the report.
+  REPORT_TIMEZONE: America/New_York
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check setup
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: scripts/ci/prepare.sh --need-backup-password
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Build the PDF
+        env:
+          REPORT_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: |
+          day=$(TZ="$REPORT_TIMEZONE" date +%Y-%m-%d)
+          echo "DAY=$day" >> "$GITHUB_ENV"
+          npx tsx scripts/report.ts "griff-credits-report-$day.pdf"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: griff-credits-report-${{ env.DAY }}
+          path: griff-credits-report-${{ env.DAY }}.pdf
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### 📄 Weekly report for the week ending $DAY"
+            echo "Download it under **Artifacts** below. It opens with your backup password (the \`BACKUP_PASSWORD\` secret)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Close any open report-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/ci/issue.sh resolve "Weekly report failed" "Weekly reports are working again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/body.md" <<BODY
+          @${{ github.repository_owner }} this week's PDF report wasn't created.
+
+          Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Earlier reports and the daily backups are still available. This issue closes itself when a report succeeds again.
+          BODY
+          scripts/ci/issue.sh open "Weekly report failed" "$RUNNER_TEMP/body.md"

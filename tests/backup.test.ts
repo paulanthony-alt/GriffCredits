@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createBackup, parseBackup, restoreBackup } from "../scripts/lib/dump";
 import { adminDb } from "../scripts/lib/firestore";
 import { checkIntegrity } from "../scripts/lib/integrity";
+import { loadReportData, renderReportPdf } from "../scripts/lib/report";
 
 const PROJECT = "demo-griff-credits";
 let env: RulesTestEnvironment;
@@ -100,6 +101,24 @@ describe("backup and restore", () => {
     expect(() =>
       parseBackup(JSON.stringify({ format: "griff-credits-backup", version: 1, count: 5, documents: {} })),
     ).toThrow(/incomplete/);
+  });
+});
+
+describe("weekly PDF report", () => {
+  it("renders every customer into a password-protected (AES-256) PDF with no readable names", async () => {
+    const data = await loadReportData(db, new Date(), "UTC");
+    expect(data.balances.map((c) => c.name)).toEqual(["Dave Smith", "Lenny"]);
+    expect(data.histories.find((h) => h.customer.id === "dave")!.lines.map((l) => [l.id, l.undone])).toEqual([
+      ["t1", false], ["t2", true], ["undo-t2", false],
+    ]);
+    // Lenny's pre-cents history (whole credits) is read as cents.
+    expect(data.histories.find((h) => h.customer.id === "lenny")!.lines[0].amountCents).toBe(1500);
+
+    const pdf = (await renderReportPdf(data, "correct horse")).toString("latin1");
+    expect(pdf.startsWith("%PDF-1.7")).toBe(true);
+    expect(pdf).toMatch(/\/Encrypt \d+ 0 R/);
+    expect(pdf).toMatch(/\/V 5/); // AES-256
+    for (const secret of ["Dave", "Smith", "Lenny", "pints"]) expect(pdf).not.toContain(secret);
   });
 });
 

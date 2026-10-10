@@ -125,7 +125,7 @@ completes it becomes the admin, so do it right away:
 **Tip for the bar tablet/phone:** open the site, then use **Add to Home Screen**
 (Safari share menu, or the Chrome ⋮ menu). It then opens like an app.
 
-## 9. Turn on backups and weekly checks
+## 9. Turn on backups, weekly checks and weekly reports
 
 **Daily backup:** every morning (07:17 UTC) GitHub copies the whole database
 (customers, their full history, staff records) into a file, **encrypts it with
@@ -154,6 +154,22 @@ IDs, never names or balances.
 
 Never change `BACKUP_PASSWORD` once backups exist: older backups need the
 password they were made with.
+
+### Weekly PDF report
+
+Every **Sunday night** (early Monday UTC) GitHub also saves a **PDF report**: a
+summary of the week, who has what credit, everything loaded and spent this
+week, and each customer's full history. It's a readable record you can open
+even if the website is down.
+
+To get it: **Actions → Weekly report**, click the latest run, and download the
+file under **Artifacts** (it comes as a .zip; open it to get the PDF). The PDF
+asks for a password: it's your **backup password**. Reports are kept for 90
+days. To make one right now, click **Run workflow** on that page.
+
+Admins can also download the same report any time from the app: **Download
+report (PDF)** under the total on the Customers screen. That copy has no
+password, so keep it somewhere private.
 
 ### Restoring a backup
 
@@ -193,6 +209,7 @@ these jobs use well under 100.
 | Site says "Griff Credits isn't connected yet" | `.env.production` is missing or incomplete. Check the six values from step 5. |
 | Sign-in says "Wrong username or PIN" for everyone | Check Email/Password is enabled (step 2). |
 | Backup or weekly check fails: `BACKUP_PASSWORD ... missing` | Do the backup password steps in section 9. |
+| Weekly report fails: `BACKUP_PASSWORD ... missing` | Do the backup password steps in section 9 (the report uses the same password). |
 | Restore fails: `Couldn't decrypt the backup` | `BACKUP_PASSWORD` was changed after that backup was made. Put the old password back temporarily. |
 | A staff member forgot their PIN | For now, an admin removes them in the Staff tab, deletes their login under **Authentication → Users** in the Firebase console, and adds them again. |
 
