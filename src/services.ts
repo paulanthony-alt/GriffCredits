@@ -12,10 +12,12 @@ import {
 import {
   addDoc,
   collection,
+  collectionGroup,
   deleteDoc,
   deleteField,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -25,7 +27,6 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
-  type DocumentData,
   type Unsubscribe,
 } from "firebase/firestore";
 import { auth, db, firebaseConfig, useEmulators } from "./firebase";
@@ -38,6 +39,8 @@ import {
 } from "./pin";
 import { formatCredits } from "./money";
 import { byName } from "./names";
+import { toCustomer, toTransaction } from "./records";
+import type { ReportEntry } from "./report/data";
 import type { CreditTransaction, Customer, Staff, StaffRole } from "./types";
 
 // ---------- Auth ----------
@@ -172,6 +175,20 @@ export function watchTransactions(
   );
 }
 
+/** Every customer and every history entry, for the PDF report. */
+export async function loadReportRecords(): Promise<{ customers: Customer[]; entries: ReportEntry[] }> {
+  const [customersSnap, entriesSnap] = await Promise.all([
+    getDocs(collection(db, "customers")),
+    getDocs(collectionGroup(db, "transactions")),
+  ]);
+  return {
+    customers: customersSnap.docs.map((d) => toCustomer(d.id, d.data())),
+    entries: entriesSnap.docs
+      .filter((d) => d.ref.parent.parent?.parent.id === "customers")
+      .map((d) => ({ ...toTransaction(d.id, d.data()), customerId: d.ref.parent.parent!.id })),
+  };
+}
+
 // ---------- Credits ----------
 
 /**
@@ -254,23 +271,6 @@ export async function undoTransaction(customerId: string, txId: string): Promise
 }
 
 // ---------- helpers ----------
-
-// Records written before amounts had cents store whole credits in `balance`,
-// `amount` and `balanceAfter`; these read either shape as cents.
-function toCustomer(id: string, d: DocumentData): Customer {
-  const { balance, ...rest } = d;
-  return { id, ...rest, balanceCents: d.balanceCents ?? (balance ?? 0) * 100 } as Customer;
-}
-
-function toTransaction(id: string, d: DocumentData): CreditTransaction {
-  const { amount, balanceAfter, ...rest } = d;
-  return {
-    id,
-    ...rest,
-    amountCents: d.amountCents ?? amount * 100,
-    balanceAfterCents: d.balanceAfterCents ?? balanceAfter * 100,
-  } as CreditTransaction;
-}
 
 function validateNewStaff(name: string, rawUsername: string, pin: string): string {
   const username = normalizeUsername(rawUsername);

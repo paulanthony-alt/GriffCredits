@@ -6,10 +6,12 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import {
+  collectionGroup,
   deleteDoc,
   deleteField,
   doc,
   getDoc,
+  getDocs,
   runTransaction,
   serverTimestamp,
   setDoc,
@@ -319,6 +321,17 @@ describe("undo", () => {
     await assertSucceeds(adjust(db("sam"), "alice", -100, "sam"));
     const spend = await lastTxIdOf("alice");
     await assertFails(undo(db("stranger"), "alice", spend, "stranger"));
+  });
+});
+
+describe("report access", () => {
+  beforeEach(seed);
+
+  it("lets staff, and only staff, read every customer's history at once", async () => {
+    await adjust(db("sam"), "alice", 100, "sam");
+    await assertSucceeds(getDocs(collectionGroup(db("sam"), "transactions")));
+    await assertFails(getDocs(collectionGroup(db("stranger"), "transactions")));
+    await assertFails(getDocs(collectionGroup(db(), "transactions")));
   });
 });
 

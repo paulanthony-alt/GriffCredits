@@ -34,7 +34,7 @@ export default function Dashboard({ me }: { me: Staff }) {
       {tab === "staff" && me.role === "admin" ? (
         <StaffView me={me} staff={staff} error={staffError} />
       ) : (
-        <CustomersView staffNames={staffNames} />
+        <CustomersView staffNames={staffNames} isAdmin={me.role === "admin"} />
       )}
       <div className="container">
         <ChangePin />

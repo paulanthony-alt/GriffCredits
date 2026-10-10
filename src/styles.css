@@ -211,3 +211,4 @@ button.link {
 
 .totals-card { grid-column: 1 / -1; align-items: center; text-align: center; gap: 0.25rem; }
 .total-amount { font-size: 2.5rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.report-button { margin-top: 0.5rem; font-size: 0.9rem; }

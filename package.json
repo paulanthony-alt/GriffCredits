@@ -9,16 +9,22 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "emulators": "firebase emulators:start --project demo-griff-credits",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-griff-credits \"vitest run\"",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts",
+    "check:data": "tsx scripts/check.ts",
+    "report": "tsx scripts/report.ts"
   },
   "dependencies": {
     "firebase": "^12.3.0",
+    "pdfmake": "^0.3.11",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
     "@types/node": "^22.20.5",
+    "@types/pdfmake": "^0.3.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
