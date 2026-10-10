@@ -39,14 +39,19 @@ jobs:
         continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Live data health
-        id: data
+      # Separate step: prepare.sh's settings (project, key) only reach later steps.
+      - name: Check setup
+        id: setup
         continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          scripts/ci/prepare.sh
-          npx tsx scripts/check.ts "$RUNNER_TEMP/data.md"
+        run: scripts/ci/prepare.sh
+
+      - name: Live data health
+        id: data
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        run: npx tsx scripts/check.ts "$RUNNER_TEMP/data.md"
 
       - name: Live site is up
         id: site
