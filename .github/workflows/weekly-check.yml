@@ -5,6 +5,8 @@ name: Weekly check
 # balance against their history. If anything fails it opens a GitHub issue
 # (which emails the repository owner); the issue closes itself once a later
 # check passes. Reports list record IDs only, never names or balances.
+# When everything passes, an "all clear" email goes to ALL_CLEAR_TO (a secret,
+# e.g. the boss) via the MAIL_USERNAME / MAIL_PASSWORD Gmail account.
 on:
   schedule:
     - cron: "47 7 * * 1" # Mondays 07:47 UTC
@@ -13,6 +15,9 @@ on:
 permissions:
   contents: read
   issues: write
+
+env:
+  REPORT_TIMEZONE: America/New_York
 
 jobs:
   check:
@@ -51,7 +56,7 @@ jobs:
         id: data
         if: steps.setup.outcome == 'success'
         continue-on-error: true
-        run: npx tsx scripts/check.ts "$RUNNER_TEMP/data.md"
+        run: npx tsx scripts/check.ts "$RUNNER_TEMP/data.md" "$RUNNER_TEMP/stats.json"
 
       - name: Live site is up
         id: site
@@ -96,3 +101,27 @@ jobs:
           } > "$RUNNER_TEMP/body.md"
           scripts/ci/issue.sh open "Weekly check found problems" "$RUNNER_TEMP/body.md"
           exit 1
+
+      - name: Email the all-clear
+        id: allclear
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          ALL_CLEAR_TO: ${{ secrets.ALL_CLEAR_TO }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          SITE_URL="https://$PROJECT_ID.web.app" npx tsx scripts/all-clear.ts "$RUNNER_TEMP/stats.json"
+          GH_TOKEN="${{ github.token }}" scripts/ci/issue.sh resolve "All-clear email failed" "The all-clear email is working again."
+
+      - name: Report email failure
+        if: failure() && steps.allclear.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/body.md" <<BODY
+          @${{ github.repository_owner }} every weekly check passed, but the all-clear email couldn't be sent.
+          Check the MAIL_USERNAME, MAIL_PASSWORD and ALL_CLEAR_TO secrets (SETUP.md, "Weekly all-clear email").
+
+          Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BODY
+          scripts/ci/issue.sh open "All-clear email failed" "$RUNNER_TEMP/body.md"

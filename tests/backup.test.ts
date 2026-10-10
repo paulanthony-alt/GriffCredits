@@ -125,7 +125,8 @@ describe("weekly PDF report", () => {
 describe("data health check", () => {
   it("passes on healthy data, including legacy and undo entries", async () => {
     const report = await checkIntegrity(db);
-    expect(report).toMatchObject({ customers: 2, transactions: 4, staff: 2, problems: [] });
+    // Dave 20.00 + Lenny 15 whole credits (pre-cents) = 35.00.
+    expect(report).toMatchObject({ customers: 2, transactions: 4, staff: 2, outstandingCents: 3500, customersWithCredit: 2, problems: [] });
   });
 
   it("catches a balance that doesn't match the history", async () => {

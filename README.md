@@ -62,7 +62,8 @@ customer's balance is converted the first time it changes.
 GitHub Actions back up the database daily (encrypted, kept 90 days) and run a
 weekly check: tests, a dependency security audit, a live-site check, and a
 data health check that every balance matches its history. Failures open a
-GitHub issue. Restoring is a one-click workflow that first backs up the current
+GitHub issue; when everything passes, an "all clear" email goes to the
+addresses in the `ALL_CLEAR_TO` secret. Restoring is a one-click workflow that first backs up the current
 data. Every week a password-protected **PDF report** (who has what, the week's
 activity, and each customer's full history) is saved too, and admins can
 download the same report from the app at any time (`src/report/`). Setup,

@@ -171,6 +171,34 @@ Admins can also download the same report any time from the app: **Download
 report (PDF)** under the total on the Customers screen. That copy has no
 password, so keep it somewhere private.
 
+### Weekly all-clear email (e.g. to your boss)
+
+When **every** Monday check passes, an "all clear" email goes out listing the
+checks and the credits out there. If anything fails, no all-clear is sent and
+you get the usual GitHub alert instead. It's sent from a **Gmail account**.
+
+1. **Pick the Gmail account to send from.** A new one just for this (e.g.
+   `griffcredits.alerts@gmail.com`) is best.
+2. **Turn on 2-Step Verification** for that account: sign in, go to
+   <https://myaccount.google.com/security>, and click **2-Step Verification**.
+   (Google requires it before step 3.)
+3. **Make an app password:** go to <https://myaccount.google.com/apppasswords>,
+   type the name `Griff Credits`, and click **Create**. Google shows a
+   16-letter password. Copy it (spaces don't matter).
+4. **Add three secrets on GitHub** (**Settings → Secrets and variables →
+   Actions → New repository secret**, once for each):
+   | Name | Secret |
+   | --- | --- |
+   | `MAIL_USERNAME` | the Gmail address from step 1 |
+   | `MAIL_PASSWORD` | the 16-letter app password from step 3 |
+   | `ALL_CLEAR_TO` | your boss's email address (several? separate with commas) |
+5. **Test it:** **Actions → Weekly check → Run workflow**. If everything
+   passes, the email arrives within a couple of minutes. Ask them to check spam
+   the first time and mark it "not spam".
+
+The addresses are stored as secrets, so they never appear in the public code or
+logs.
+
 ### Restoring a backup
 
 Only do this if the data has actually gone wrong. It replaces **all** current
@@ -210,6 +238,7 @@ these jobs use well under 100.
 | Sign-in says "Wrong username or PIN" for everyone | Check Email/Password is enabled (step 2). |
 | Backup or weekly check fails: `BACKUP_PASSWORD ... missing` | Do the backup password steps in section 9. |
 | Weekly report fails: `BACKUP_PASSWORD ... missing` | Do the backup password steps in section 9 (the report uses the same password). |
+| GitHub issue "All-clear email failed" | Recheck the three email secrets. `MAIL_PASSWORD` must be the app password, not the Gmail login password. |
 | Restore fails: `Couldn't decrypt the backup` | `BACKUP_PASSWORD` was changed after that backup was made. Put the old password back temporarily. |
 | A staff member forgot their PIN | For now, an admin removes them in the Staff tab, deletes their login under **Authentication → Users** in the Firebase console, and adds them again. |
 

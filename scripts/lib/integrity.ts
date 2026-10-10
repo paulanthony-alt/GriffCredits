@@ -8,6 +8,9 @@ export interface IntegrityReport {
   customers: number;
   transactions: number;
   staff: number;
+  /** Sum of every balance. Not printed in public logs; only used for the all-clear email. */
+  outstandingCents: number;
+  customersWithCredit: number;
   problems: string[];
 }
 
@@ -19,6 +22,8 @@ const balanceAfterCentsOf = (d: DocumentData) => (d.balanceAfterCents ?? (d.bala
 export async function checkIntegrity(db: Firestore): Promise<IntegrityReport> {
   const problems: string[] = [];
   let transactions = 0;
+  let outstandingCents = 0;
+  let customersWithCredit = 0;
 
   const staffSnap = await db.collection("staff").get();
   const admins = staffSnap.docs.filter((d) => d.get("role") === "admin");
@@ -38,6 +43,8 @@ export async function checkIntegrity(db: Firestore): Promise<IntegrityReport> {
       problems.push(`Customer ${c.id}: invalid balance (${balance} cents).`);
       continue;
     }
+    outstandingCents += balance;
+    if (balance > 0) customersWithCredit++;
     if ("balance" in data && "balanceCents" in data) {
       problems.push(`Customer ${c.id}: has both old and new balance fields.`);
     }
@@ -76,5 +83,5 @@ export async function checkIntegrity(db: Firestore): Promise<IntegrityReport> {
     }
   }
 
-  return { customers: customersSnap.size, transactions, staff: staffSnap.size, problems };
+  return { customers: customersSnap.size, transactions, staff: staffSnap.size, outstandingCents, customersWithCredit, problems };
 }
