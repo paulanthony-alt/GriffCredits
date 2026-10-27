@@ -189,6 +189,20 @@ export async function loadReportRecords(): Promise<{ customers: Customer[]; entr
   };
 }
 
+/** Live feed of every customer's history (for the Trends charts). */
+export function watchAllEntries(onChange: (entries: ReportEntry[]) => void, onError?: (e: Error) => void): Unsubscribe {
+  return onSnapshot(
+    collectionGroup(db, "transactions"),
+    (snap) =>
+      onChange(
+        snap.docs
+          .filter((d) => d.ref.parent.parent?.parent.id === "customers")
+          .map((d) => ({ ...toTransaction(d.id, d.data()), customerId: d.ref.parent.parent!.id })),
+      ),
+    onError,
+  );
+}
+
 // ---------- Credits ----------
 
 /**

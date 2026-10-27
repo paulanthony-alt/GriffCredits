@@ -12,7 +12,10 @@ take credits off as they spend. Customers don't sign in (yet). See
 
 The Customers screen shows the **total credits out there** (the sum of every
 customer's balance), which updates live on every device as credits are loaded,
-spent or undone (`src/totals.ts`).
+spent or undone (`src/totals.ts`). The **Trends** button (top left) opens
+charts of credits loaded vs spent per day/week/month and of the total credits out
+there over time, with a plain-English summary and a table view (`src/trends.ts`,
+`src/components/trends/`).
 
 Built with React + TypeScript (Vite) and Firebase (Auth + Firestore).
 
