@@ -3,6 +3,7 @@ import { friendlyError, watchAllStaff } from "../services";
 import type { Staff } from "../types";
 import ChangePin from "./ChangePin";
 import CustomersView from "./CustomersView";
+import ErrorBoundary from "./ErrorBoundary";
 import Header from "./Header";
 import StaffView from "./StaffView";
 
@@ -26,9 +27,11 @@ export default function Dashboard({ me }: { me: Staff }) {
     <>
       <Header me={me} onOpenTrends={() => setShowTrends(true)} />
       {showTrends && (
-        <Suspense fallback={null}>
-          <TrendsPanel onClose={() => setShowTrends(false)} />
-        </Suspense>
+        <ErrorBoundary variant="panel" onClose={() => setShowTrends(false)}>
+          <Suspense fallback={null}>
+            <TrendsPanel onClose={() => setShowTrends(false)} />
+          </Suspense>
+        </ErrorBoundary>
       )}
       {me.role === "admin" && (
         <nav className="tabs">

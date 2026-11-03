@@ -29,6 +29,7 @@ import {
   writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
+import { isChunkLoadError, NEW_VERSION_MESSAGE } from "./appUpdate";
 import { auth, db, firebaseConfig, useEmulators } from "./firebase";
 import {
   isValidPin,
@@ -305,6 +306,7 @@ function newStaffDoc(name: string, username: string, role: StaffRole) {
 
 /** Turns Firebase error codes into something a person at the bar can read. */
 export function friendlyError(e: unknown): string {
+  if (isChunkLoadError(e)) return NEW_VERSION_MESSAGE; // e.g. "Download report" on a page opened before an update
   const code = (e as { code?: string })?.code ?? "";
   switch (code) {
     case "auth/invalid-credential":
